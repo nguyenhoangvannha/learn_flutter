@@ -450,6 +450,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
 
 mixin _$TaskDaoMixin on DatabaseAccessor<AppDatabase> {
   $TasksTable get tasks => db.tasks;
+  $TagsTable get tags => db.tags;
   Task _rowToTask(QueryRow row) {
     return Task(
       id: row.readInt('id'),

@@ -10,7 +10,8 @@ class Tasks extends Table {
   // autoIncrement automatically sets this to be the primary key
   IntColumn get id => integer().autoIncrement()();
 
-  TextColumn get tagName => text().nullable().customConstraint('REFERENCES tags(name)')();
+  TextColumn get tagName =>
+      text().nullable().customConstraint('REFERENCES tags(name)')();
 
   // If the length constraint is not fulfilled, the Task will not
   // be inserted into the database and an exception will be thrown.
@@ -34,6 +35,14 @@ class Tags extends Table {
   Set<Column> get primaryKey => {name};
 }
 
+class TaskWithTag {
+  final Task task;
+
+  final Tag tag;
+
+  TaskWithTag(this.task, this.tag);
+}
+
 // This annotation tells the code generator which tables this DB works with
 @UseMoor(tables: [Tasks, Tags], daos: [TaskDao, TagDao])
 // _$AppDatabase is the name of the generated class
@@ -49,11 +58,23 @@ class AppDatabase extends _$AppDatabase {
   // Bump this when changing tables and columns.
   // Migrations will be covered in the next part.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration =>
+      MigrationStrategy(onUpgrade: (migrator, from, to) async {
+        if (from == 1) {
+          await migrator.addColumn(tasks, tasks.tagName);
+          await migrator.createTable(tags);
+        }
+      }, beforeOpen: (db, details) async {
+        await db.customStatement('PRAGMA foreign_keys = ON');
+      });
 }
 
 @UseDao(tables: [
-  Tasks
+  Tasks,
+  Tags,
 ], queries: {
   'completedTasksGenerated':
       'SELECT * FROM tasks WHERE completed = 1 ORDER BY due_date DESC, name;'
@@ -64,6 +85,21 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
   TaskDao(this.db) : super(db);
 
   Future<List<Task>> getAllTasks() => select(tasks).get();
+
+  Stream<List<TaskWithTag>> watchAllTasksWithTag() {
+    return (select(tasks)
+          ..orderBy(([
+            (t) => OrderingTerm(expression: t.dueDate, mode: OrderingMode.desc),
+            (t) => OrderingTerm(expression: t.name, mode: OrderingMode.asc)
+          ])))
+        .join([
+          leftOuterJoin(tags, tags.name.equalsExp(tasks.tagName)),
+        ])
+        .watch()
+        .map((rows) => rows.map((row) {
+              return TaskWithTag(row.readTable(tasks), row.readTable(tags));
+            }).toList());
+  }
 
   Stream<List<Task>> watchAllTasks() {
     return (select(tasks)

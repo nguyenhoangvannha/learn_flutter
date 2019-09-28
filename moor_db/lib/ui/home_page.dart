@@ -1,68 +1,51 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
-import 'package:moor_db/data/moor_database.dart';
-import 'package:moor_db/ui/new_task_input_widget.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
-class MyHomePage extends StatefulWidget {
+import '../data/moor_database.dart';
+import 'new_tag_input_widget.dart';
+import 'new_task_input_widget.dart';
+
+class HomePage extends StatefulWidget {
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  _HomePageState createState() => _HomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  bool showCompleted = false;
-
+class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Tasks'),
-        actions: <Widget>[
-          _buildCompletedOnlySwitch(),
-        ],
-      ),
-      body: Column(
-        children: <Widget>[
-          Expanded(child: _buildTaskList(context)),
-          NewTaskInput()
-        ],
-      ),
-    );
-  }
-
-  Row _buildCompletedOnlySwitch() {
-    return Row(
-      children: <Widget>[
-        Text('Completed only'),
-        Switch(
-          value: showCompleted,
-          activeColor: Colors.white,
-          onChanged: (newValue) {
-            setState(() {
-              showCompleted = newValue;
-            });
-          },
+        appBar: AppBar(
+          title: Text('Tasks'),
         ),
-      ],
-    );
+        body: Column(
+          children: <Widget>[
+            Expanded(child: _buildTaskList(context)),
+            NewTaskInput(),
+            NewTagInput(),
+          ],
+        ));
   }
 
-  StreamBuilder<List<Task>> _buildTaskList(BuildContext context) {
-    final taskDao = Provider.of<TaskDao>(context);
+  StreamBuilder<List<TaskWithTag>> _buildTaskList(BuildContext context) {
+    final dao = Provider.of<TaskDao>(context);
     return StreamBuilder(
-      stream: showCompleted ? taskDao.watchCompletedTasks() : taskDao.watchAllTasks(),
-      builder: (context, AsyncSnapshot<List<Task>> snapshot) {
-        final tasks = snapshot.data ?? [];
+      stream: dao.watchAllTasksWithTag(),
+      builder: (context, AsyncSnapshot<List<TaskWithTag>> snapshot) {
+        final tasks = snapshot.data ?? List();
+
         return ListView.builder(
-            itemCount: tasks.length,
-            itemBuilder: (_, index) {
-              return _buildTaskItem(tasks.elementAt(index), taskDao);
-            });
+          itemCount: tasks.length,
+          itemBuilder: (_, index) {
+            final item = tasks[index];
+            return _buildListItem(item, dao);
+          },
+        );
       },
     );
   }
 
-  Widget _buildTaskItem(Task itemTask, TaskDao database) {
+  Widget _buildListItem(TaskWithTag item, TaskDao dao) {
     return Slidable(
       actionPane: SlidableDrawerActionPane(),
       secondaryActions: <Widget>[
@@ -70,17 +53,43 @@ class _MyHomePageState extends State<MyHomePage> {
           caption: 'Delete',
           color: Colors.red,
           icon: Icons.delete,
-          onTap: () => database.deleteTask(itemTask),
+          onTap: () => dao.deleteTask(item.task),
         )
       ],
       child: CheckboxListTile(
-        title: Text(itemTask.name),
-        subtitle: Text(itemTask.dueDate?.toString() ?? 'No date'),
-        value: itemTask.completed,
+        title: Text(item.task.name),
+        subtitle: Text(item.task.dueDate?.toString() ?? 'No date'),
+        secondary: _buildTag(item.tag),
+        value: item.task.completed,
         onChanged: (newValue) {
-          database.updateTask(itemTask.copyWith(completed: newValue));
+          dao.updateTask(item.task.copyWith(completed: newValue));
         },
       ),
+    );
+  }
+
+  Column _buildTag(Tag tag) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        if (tag != null) ...[
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(tag.color),
+            ),
+          ),
+          Text(
+            tag.name,
+            style: TextStyle(
+              color: Colors.black.withOpacity(0.5),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
