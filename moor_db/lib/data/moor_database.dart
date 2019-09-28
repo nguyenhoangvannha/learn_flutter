@@ -10,6 +10,8 @@ class Tasks extends Table {
   // autoIncrement automatically sets this to be the primary key
   IntColumn get id => integer().autoIncrement()();
 
+  TextColumn get tagName => text().nullable().customConstraint('REFERENCES tags(name)')();
+
   // If the length constraint is not fulfilled, the Task will not
   // be inserted into the database and an exception will be thrown.
   TextColumn get name => text().withLength(min: 1, max: 50)();
@@ -23,8 +25,17 @@ class Tasks extends Table {
   BoolColumn get completed => boolean().withDefault(Constant(false))();
 }
 
+class Tags extends Table {
+  TextColumn get name => text().withLength(min: 1, max: 10)();
+
+  IntColumn get color => integer()();
+
+  @override
+  Set<Column> get primaryKey => {name};
+}
+
 // This annotation tells the code generator which tables this DB works with
-@UseMoor(tables: [Tasks], daos: [TaskDao])
+@UseMoor(tables: [Tasks, Tags], daos: [TaskDao, TagDao])
 // _$AppDatabase is the name of the generated class
 class AppDatabase extends _$AppDatabase {
   AppDatabase()
@@ -41,8 +52,11 @@ class AppDatabase extends _$AppDatabase {
   int get schemaVersion => 1;
 }
 
-@UseDao(tables: [Tasks], queries:{
-  'completedTasksGenerated' : 'SELECT * FROM tasks WHERE completed = 1 ORDER BY due_date DESC, name;'
+@UseDao(tables: [
+  Tasks
+], queries: {
+  'completedTasksGenerated':
+      'SELECT * FROM tasks WHERE completed = 1 ORDER BY due_date DESC, name;'
 })
 class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
   AppDatabase db;
@@ -71,8 +85,9 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
   }
 
   Stream<List<Task>> watchCompletedTasksCustom() {
-    return customSelectStream('SELECT * FROM tasks WHERE completed = 1 ORDER BY due_date DESC, name;',
-    readsFrom: {tasks}).map((rows){
+    return customSelectStream(
+        'SELECT * FROM tasks WHERE completed = 1 ORDER BY due_date DESC, name;',
+        readsFrom: {tasks}).map((rows) {
       return rows.map((row) => Task.fromData(row.data, db)).toList();
     });
   }
@@ -82,4 +97,15 @@ class TaskDao extends DatabaseAccessor<AppDatabase> with _$TaskDaoMixin {
   Future<bool> updateTask(Insertable<Task> task) => update(tasks).replace(task);
 
   Future<int> deleteTask(Insertable<Task> task) => delete(tasks).delete(task);
+}
+
+@UseDao(tables: [Tags])
+class TagDao extends DatabaseAccessor<AppDatabase> with _$TagDaoMixin {
+  AppDatabase db;
+
+  TagDao(this.db) : super(db);
+
+  Stream<List<Tag>> watchTags() => select(tags).watch();
+
+  Future insertTag(Insertable<Tag> tag) => into(tags).insert(tag);
 }
